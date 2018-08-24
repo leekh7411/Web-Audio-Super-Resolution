@@ -1,4 +1,5 @@
 const tf = require('@tensorflow/tfjs');
+const tf_core = require('@tensorflow/tfjs-core');
 require('@tensorflow/tfjs-node');
 
 function SNR(y_true,y_pred){
@@ -12,10 +13,10 @@ function SNR(y_true,y_pred){
     return avg_snr * -1;
 }
 
-class SubPixel1D extends tf.layers.Layer {
+class subPixel1D extends tf.layers.Layer {
+    
     constructor() {
         super({});
-        // TODO(bileschi): Can we point to documentation on masking here?
         this.supportsMasking = true;
     }
 
@@ -29,32 +30,29 @@ class SubPixel1D extends tf.layers.Layer {
             input = input[0];
         }
         this.invokeCallHook(inputs, kwargs);
-        //print('--input-shape--');
-        //const input_shape = input.shape;
-        //print(input_shape);
         const transpose_x = tf.transpose(input, [2,1,0]);
-        //const tx_shape = transpose_x.shape;
-        //print(tx_shape);
         const batchnd_x = tf.batchToSpaceND(transpose_x, [2], [[0,0]]);
-        //const bx_shape = batchnd_x.shape;
-        //print(bx_shape);
         const x = tf.transpose(batchnd_x , [2,1,0]);  
         return x;
     }
 
     getClassName() {
-        return 'SubPixel1D';
+        return 'subPixel1D';
     }
 }
+subPixel1D.className = 'subPixel1D'; // static variable
+tf.serialization.SerializationMap.register(subPixel1D); // Here i added serialize code
 
-        
+function SubPixel1D(){
+    return new subPixel1D();
+}
+
 function print(x){
     console.log(x);
 }
         
 // make model!
 function base_model(){
-
     // init tf.layers
 
     const d_conv1 = tf.layers.conv1d({kernelSize: 8, filters: 32, strides: 2, 
@@ -74,24 +72,24 @@ function base_model(){
     const u_conv3  = tf.layers.conv1d({kernelSize: 8, filters: 48*2, strides: 1, 
                                        activation: 'relu', kernelInitializer: 'glorotUniform', padding:'same'});
     const u_drop3  = tf.layers.dropout(0.5);
-    const u_sbpx3  = new SubPixel1D();
+    const u_sbpx3  = SubPixel1D();
     const u_conc3  = tf.layers.concatenate();
 
     const u_conv2  = tf.layers.conv1d({kernelSize: 8, filters: 32*2, strides: 1, 
                                        activation: 'relu', kernelInitializer: 'glorotUniform', padding:'same'});
     const u_drop2  = tf.layers.dropout(0.5);
-    const u_sbpx2  = new SubPixel1D();
+    const u_sbpx2  = SubPixel1D();
     const u_conc2  = tf.layers.concatenate();
 
     const u_conv1  = tf.layers.conv1d({kernelSize: 8, filters: 32*2, strides: 1, 
                                        activation: 'relu', kernelInitializer: 'glorotUniform', padding:'same'});
     const u_drop1  = tf.layers.dropout(0.5);
-    const u_sbpx1  = new SubPixel1D();
+    const u_sbpx1  = SubPixel1D();
     const u_conc1  = tf.layers.concatenate();
 
     const f_conv  = tf.layers.conv1d({kernelSize: 4, filters: 2, strides: 1, 
                                       activation: 'relu', kernelInitializer: 'glorotUniform', padding:'same'});
-    const f_sbpx  = new SubPixel1D();
+    const f_sbpx  = SubPixel1D();
     const f_add = tf.layers.add();
 
     // apply layers
@@ -121,9 +119,14 @@ function base_model(){
     const y   = f_add.apply([fs,x]) // todo: add-final
 
     const model = tf.model({inputs: x, outputs: y});
+        
     return model;
 }
-        
+async function load_model(){
+    print('test load-model');
+    const model2 = await tf.loadModel('file://./asr-model/model.json');
+    print('finish');
+}  
 async function train_model(){
     
     // init dataset
@@ -163,15 +166,17 @@ async function train_model(){
               callbacks: {
                 onBatchEnd: async (batch, log) => {
                   console.log(`Batch ${batch}: loss = ${log.loss}`);
-                  await model.save('file://./asr-model');
+                  await model.save('file://./asr-model',true);
                 }
               }
             });
         }
     }
     
+    await load_model();
+    
     return 0;
 }
 
 
-train_model();
+load_model();
